@@ -65,6 +65,5 @@ list($options) = cli_get_params(array('name'=>'', 'show'=>false, 'hide'=>false, 
                 echo "cannotdeleteforummodule";
 }
             uninstall_plugin('mod', $options['name']);
-			echo "sucssessfuly removed ".$strmodulename;
             exit;
         }
