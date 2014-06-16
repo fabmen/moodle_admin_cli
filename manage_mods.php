@@ -1,77 +1,70 @@
 <?php
-
-    // Allows the admin to configure blocks (hide/show, delete and configure)
-
+      // Allows the admin to manage activity modules
 define('CLI_SCRIPT', true);
 
     require(dirname(dirname(dirname(__FILE__))).'/config.php');
+	require(dirname(dirname(dirname(__FILE__))).'/course/lib.php');
     require_once($CFG->libdir.'/adminlib.php');
     require_once($CFG->libdir.'/tablelib.php');
 	require_once($CFG->libdir.'/clilib.php');      // cli only functions
 
-	list($options) = cli_get_params(array('name'=>'', 'show'=>false, 'hide'=>false, 'delete'=>false,'protect'=>false,'unprotect'=>false));
-	
-/// If data submitted, then process and store.
+    // defines
+    define('MODULE_TABLE','module_administration_table');
+
+list($options) = cli_get_params(array('name'=>'', 'show'=>false, 'hide'=>false, 'delete'=>false));
 
     if (!empty($options['hide'])) {
-		echo "hiding ".$options['name']."...";
-        if (!$block = $DB->get_record('block', array('name'=>$options['name']))) {
-            echo 'block does not exist';
+	echo "hiding ".$options['name']."...";
+        if (!$module = $DB->get_record("modules", array("name"=>$options['name']))) {
+            print_error('moduledoesnotexist', 'error');
         }
-        $DB->set_field('block', 'visible', '0', array('id'=>$block->id));      // Hide block
+        $DB->set_field("modules", "visible", "0", array("id"=>$module->id)); // Hide main module
+        // Remember the visibility status in visibleold
+        // and hide...
+        $sql = "UPDATE {course_modules}
+                   SET visibleold=visible, visible=0
+                 WHERE module=?";
+        $DB->execute($sql, array($module->id));
+        // clear the course modinfo cache for courses
+        // where we just deleted something
+        $sql = "UPDATE {course}
+                   SET modinfo=''
+                 WHERE id IN (SELECT DISTINCT course
+                                FROM {course_modules}
+                               WHERE visibleold=1 AND module=?)";
+        $DB->execute($sql, array($module->id));
     }
-    
+
     if (!empty($options['show'])) {
 	echo "showing ".$options['name']."...";
-        if (!$block = $DB->get_record('block', array('name'=>$options['name']))) {
-            echo 'block does not exist';
+        if (!$module = $DB->get_record("modules", array("name"=>$options['name']))) {
+           echo 'moduledoesnotexist';
         }
-        $DB->set_field('block', 'visible', '1', array('id'=>$block->id));      // Show block
-    }
-
-    if (!isset($CFG->undeletableblocktypes) || (!is_array($CFG->undeletableblocktypes) && !is_string($CFG->undeletableblocktypes))) {
-        $undeletableblocktypes = array('navigation', 'settings');
-    } 
-	else if (is_string($CFG->undeletableblocktypes)) {
-        $undeletableblocktypes = explode(',', $CFG->undeletableblocktypes);
-    } 
-	else {
-        $undeletableblocktypes = $CFG->undeletableblocktypes;
-    }
-
-    if (!empty($options['protect'])) {
-	 echo "protecting ".$options['name']."...";
-       if (!$block = $DB->get_record('block', array('name'=>$options['name']))) {
-            echo 'block does not exist';
-        }
-        if (!in_array($block->name, $undeletableblocktypes)) {
-           $undeletableblocktypes[] = $block->name;
-            set_config('undeletableblocktypes', implode(',', $undeletableblocktypes));
-        }
-    }
-
-     if (!empty($options['unprotect'])) {
-       echo "unprotecting ".$options['name']."...";
-        if (!$block = $DB->get_record('block', array('name'=>$options['name']))) {
-            echo 'block does not exist';
-        }
-        if (in_array($block->name, $undeletableblocktypes)) {
-            $undeletableblocktypes = array_diff($undeletableblocktypes, array($block->name));
-            set_config('undeletableblocktypes', implode(',', $undeletableblocktypes));
-        }
+        $DB->set_field("modules", "visible", "1", array("id"=>$module->id)); // Show main module
+        $DB->set_field('course_modules', 'visible', '1', array('visibleold'=>1, 'module'=>$module->id)); // Get the previous saved visible state for the course module.
+        // clear the course modinfo cache for courses
+        // where we just made something visible
+        $sql = "UPDATE {course}
+                   SET modinfo = ''
+                 WHERE id IN (SELECT DISTINCT course
+                                FROM {course_modules}
+                               WHERE visible=1 AND module=?)";
+        $DB->execute($sql, array($module->id));
     }
 
     if (!empty($options['delete'])) {
-		echo "deleting ".$options['name']."...";
-        if (!$block = $DB->get_record('block', array('name'=>$options['name']))) {
-            echo 'block does not exist';
-        }
-		if (get_string_manager()->string_exists('pluginname', "block_".$options['name'])) {
-            $strblockname = get_string('pluginname', "block_".$options['name']);
+ echo "deleting ".$options['name']."...";
+		if (get_string_manager()->string_exists('modulename', $options['name'])) {
+            $strmodulename = get_string('modulename', $options['name']);
         } else {
-            $strblockname = $options['name'];
+            $strmodulename = $options['name'];
         }
-
-            uninstall_plugin('block', $block->name);
-			echo "sucssessfuly removed ".$strblockname;
-    }
+		
+ // Delete everything!!
+            if ($options['name'] == "forum") {
+                echo "cannotdeleteforummodule";
+}
+            uninstall_plugin('mod', $options['name']);
+			echo "sucssessfuly removed ".$strmodulename;
+            exit;
+        }
